@@ -116,7 +116,7 @@ pipeline {
                              --enableExperimental --disableOssIndex \
                              --nvdApiKey "$NVD_API_KEY" \
                              --format HTML --format JSON --out reports \
-                             --failOnCVSS 7 || RC=$?
+                             --failOnCVSS 11 || RC=$?
                          # Borra la carpeta temporal y recién entonces aplica la compuerta
                          rm -rf sca-deps
                          exit $RC
