@@ -177,11 +177,11 @@ pipeline {
         }
     }
 
-    post {                                      // se ejecuta al terminar el pipeline
-        always {                                // pase lo que pase: guarda los reportes
-            archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
+    post {
+        always {
+            archiveArtifacts artifacts: 'reports/**',
+                             allowEmptyArchive: true,
+                             fingerprint: true
         }
-        success { echo "Pipeline OK: http://localhost:5000" }                       // todo en verde
-        failure { echo 'Pipeline falló: abre la etapa en rojo y lee el mensaje.' }  // alguna etapa en rojo
     }
-}
+} // Cierre de pipeline
