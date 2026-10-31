@@ -50,7 +50,7 @@ pipeline {
                         # Muestra el reporte en la Console Output de Jenkins
                         cat reports/bandit.txt
                         # COMPUERTA: termina con error solo si hay hallazgos High (-lll)
-                        bandit -r app.py -lll -q > /dev/null || true
+                        bandit -r app.py -lll -q > /dev/null 
                     '
                 '''
             }
@@ -116,7 +116,7 @@ pipeline {
                              --enableExperimental --disableOssIndex \
                              --nvdApiKey "$NVD_API_KEY" \
                              --format HTML --format JSON --out reports \
-                             --failOnCVSS 11 || RC=$?
+                             --failOnCVSS 7 || RC=$?
                          # Borra la carpeta temporal y recién entonces aplica la compuerta
                          rm -rf sca-deps
                          exit $RC
