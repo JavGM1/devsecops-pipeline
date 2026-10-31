@@ -84,46 +84,46 @@ pipeline {
         }
 
         // >>> PASO 7: descomenta la etapa SCA - Dependency-Check (va antes de Deploy)
-        stage('SCA - Dependency-Check') {       // SCA: busca CVE en las librerías
-            steps {
-                // Trae tu API key de NVD de la credencial nvd-api-key a NVD_API_KEY
-                withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-                    sh '''
-                        # Carpeta de reportes y limpieza de una ejecución anterior
-                        mkdir -p reports
-                        rm -rf sca-deps
-                        # Instala las librerías de requirements.txt en la carpeta sca-deps,
-                        # para que Dependency-Check las revise ya instaladas
-                        docker run --rm --volumes-from jenkins -w "$WORKSPACE" python:3.12-slim \
-                            pip install -q --root-user-action=ignore --disable-pip-version-check \
-                            --target sca-deps -r requirements.txt
-                        # Código de salida de Dependency-Check (0 = sin problemas)
-                        RC=0
-                        # Lanza Dependency-Check en un contenedor:
-                        #   -v dependency-check-data   reusa la base de NVD ya descargada
-                        #   --scan sca-deps            revisa cada librería instalada
-                        #   --enableExperimental       activa el analizador de Python
-                        #   --disableOssIndex          apaga una fuente que pide otra cuenta
-                        #   --nvdApiKey                tu clave, sin escribirla en el código
-                        #   --format/--out             deja el reporte HTML y JSON en reports
-                        #   --failOnCVSS 7             COMPUERTA: falla con un CVE de CVSS 7 o más
-                        #   || RC=$?                   guarda el resultado sin cortar todavía
-                        docker run --rm --user root \
-                            --volumes-from jenkins -w "$WORKSPACE" \
-                            -v dependency-check-data:/usr/share/dependency-check/data \
-                            owasp/dependency-check:latest \
-                            --scan sca-deps --project devsecops-lab \
-                            --enableExperimental --disableOssIndex \
-                            --nvdApiKey "$NVD_API_KEY" \
-                            --format HTML --format JSON --out reports \
-                            --failOnCVSS 7 || RC=$?
-                        # Borra la carpeta temporal y recién entonces aplica la compuerta
-                        rm -rf sca-deps
-                        exit $RC
-                    '''
-                }
-            }
-        }
+         stage('SCA - Dependency-Check') {       // SCA: busca CVE en las librerías
+             steps {
+                 // Trae tu API key de NVD de la credencial nvd-api-key a NVD_API_KEY
+                 withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+                     sh '''
+                         # Carpeta de reportes y limpieza de una ejecución anterior
+                         mkdir -p reports
+                         rm -rf sca-deps
+                         # Instala las librerías de requirements.txt en la carpeta sca-deps,
+                         # para que Dependency-Check las revise ya instaladas
+                         docker run --rm --volumes-from jenkins -w "$WORKSPACE" python:3.12-slim \
+                             pip install -q --root-user-action=ignore --disable-pip-version-check \
+                             --target sca-deps -r requirements.txt
+                         # Código de salida de Dependency-Check (0 = sin problemas)
+                         RC=0
+                         # Lanza Dependency-Check en un contenedor:
+                         #   -v dependency-check-data   reusa la base de NVD ya descargada
+                         #   --scan sca-deps            revisa cada librería instalada
+                         #   --enableExperimental       activa el analizador de Python
+                         #   --disableOssIndex          apaga una fuente que pide otra cuenta
+                         #   --nvdApiKey                tu clave, sin escribirla en el código
+                         #   --format/--out             deja el reporte HTML y JSON en reports
+                         #   --failOnCVSS 7             COMPUERTA: falla con un CVE de CVSS 7 o más
+                         #   || RC=$?                   guarda el resultado sin cortar todavía
+                         docker run --rm --user root \
+                             --volumes-from jenkins -w "$WORKSPACE" \
+                             -v dependency-check-data:/usr/share/dependency-check/data \
+                             owasp/dependency-check:latest \
+                             --scan sca-deps --project devsecops-lab \
+                             --enableExperimental --disableOssIndex \
+                             --nvdApiKey "$NVD_API_KEY" \
+                             --format HTML --format JSON --out reports \
+                             --failOnCVSS 7 || RC=$?
+                         # Borra la carpeta temporal y recién entonces aplica la compuerta
+                         rm -rf sca-deps
+                         exit $RC
+                     '''
+                 }
+             }
+         }
 
         stage('Deploy') {                       // despliega la app (solo si todo lo anterior pasó)
             steps {
@@ -146,42 +146,42 @@ pipeline {
         }
 
         // >>> PASO 8: descomenta la etapa DAST - OWASP ZAP (va después de Deploy)
-        stage('DAST - OWASP ZAP') {             // DAST: ataca la app ya desplegada
-            steps {
-                sh '''
-                    # Carpeta de reportes
-                    mkdir -p reports
-                    # Código de salida de ZAP (0 = sin alertas)
-                    RC=0
-                    # Borra un contenedor de ZAP que haya quedado de un build anterior
-                    docker rm -f zap-${BUILD_NUMBER} || true
-                    # Lanza ZAP en modo baseline (pasivo y rápido):
-                    #   --network ${NETWORK}   misma red que la app, la alcanza como flask-app
-                    #   -v zap-wrk-...         volumen donde ZAP deja sus reportes
-                    #   -t http://...:5000/    la app que va a analizar
-                    #   -r / -J                reporte en HTML y en JSON
-                    #   || RC=$?               guarda el resultado sin detener el pipeline
-                    docker run --name zap-${BUILD_NUMBER} --user root --network ${NETWORK} \
-                        -v zap-wrk-${BUILD_NUMBER}:/zap/wrk \
-                        ghcr.io/zaproxy/zaproxy:stable \
-                        zap-baseline.py -t http://${APP_NAME}:5000/ -r zap_report.html -J zap_report.json || RC=$?
-                    # Copia los reportes de ZAP a la carpeta reports del job
-                    docker cp zap-${BUILD_NUMBER}:/zap/wrk/. reports/ || true
-                    # Limpia el contenedor y el volumen de ZAP
-                    docker rm zap-${BUILD_NUMBER}
-                    docker volume rm zap-wrk-${BUILD_NUMBER} || true
-                    # Informa el resultado: esta etapa no bloquea el pipeline
-                    echo "ZAP terminó con código $RC (0 = sin alertas, 1 = fallos, 2 = advertencias). Esta etapa informa, no bloquea."
-                '''
-            }
-        }
+        // stage('DAST - OWASP ZAP') {             // DAST: ataca la app ya desplegada
+        //     steps {
+        //         sh '''
+        //             # Carpeta de reportes
+        //             mkdir -p reports
+        //             # Código de salida de ZAP (0 = sin alertas)
+        //             RC=0
+        //             # Borra un contenedor de ZAP que haya quedado de un build anterior
+        //             docker rm -f zap-${BUILD_NUMBER} || true
+        //             # Lanza ZAP en modo baseline (pasivo y rápido):
+        //             #   --network ${NETWORK}   misma red que la app, la alcanza como flask-app
+        //             #   -v zap-wrk-...         volumen donde ZAP deja sus reportes
+        //             #   -t http://...:5000/    la app que va a analizar
+        //             #   -r / -J                reporte en HTML y en JSON
+        //             #   || RC=$?               guarda el resultado sin detener el pipeline
+        //             docker run --name zap-${BUILD_NUMBER} --user root --network ${NETWORK} \
+        //                 -v zap-wrk-${BUILD_NUMBER}:/zap/wrk \
+        //                 ghcr.io/zaproxy/zaproxy:stable \
+        //                 zap-baseline.py -t http://${APP_NAME}:5000/ -r zap_report.html -J zap_report.json || RC=$?
+        //             # Copia los reportes de ZAP a la carpeta reports del job
+        //             docker cp zap-${BUILD_NUMBER}:/zap/wrk/. reports/ || true
+        //             # Limpia el contenedor y el volumen de ZAP
+        //             docker rm zap-${BUILD_NUMBER}
+        //             docker volume rm zap-wrk-${BUILD_NUMBER} || true
+        //             # Informa el resultado: esta etapa no bloquea el pipeline
+        //             echo "ZAP terminó con código $RC (0 = sin alertas, 1 = fallos, 2 = advertencias). Esta etapa informa, no bloquea."
+        //         '''
+        //     }
+        // }
     }
 
-    post {
-        always {
-            archiveArtifacts artifacts: 'reports/**',
-                             allowEmptyArchive: true,
-                             fingerprint: true
+    post {                                      // se ejecuta al terminar el pipeline
+        always {                                // pase lo que pase: guarda los reportes
+            archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
         }
+        success { echo "Pipeline OK: http://localhost:5000" }                       // todo en verde
+        failure { echo 'Pipeline falló: abre la etapa en rojo y lee el mensaje.' }  // alguna etapa en rojo
     }
-} // Cierre de pipeline
+}
